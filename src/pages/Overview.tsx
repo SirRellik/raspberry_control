@@ -30,9 +30,10 @@ export const Overview: React.FC<OverviewProps> = ({ apiStatus, wsData }) => {
   }, []);
 
   const currentValues = {
-    grid_kw: wsData['grid_kw'] || apiStatus?.grid_kw || 0,
-    pv_kw: wsData['pv_kw'] || apiStatus?.pv_kw || 0,
-    tuv_c: wsData['tuv_c'] || apiStatus?.tuv_c || 0
+    // Prioritně používáme data z WebSocket (MQTT telemetrie)
+    grid_kw: wsData['home/tele/grid']?.p_grid || wsData.bootstrap?.grid_kw || apiStatus?.grid_kw || 0,
+    pv_kw: wsData['home/tele/inverter']?.p_pv || wsData.bootstrap?.pv_kw || apiStatus?.pv_kw || 0,
+    tuv_c: wsData['home/tele/temps']?.t_tuv || wsData.bootstrap?.tuv_c || apiStatus?.tuv_c || 0
   };
 
   return (

@@ -33,7 +33,9 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
       }));
       setData(priceData);
     } catch (error) {
-      console.error('Error loading price data in component:', error);
+      console.error('Error loading spot prices:', error);
+      // Při chybě zobrazíme prázdný graf
+      setData([]);
     } finally {
       setLoading(false);
     }

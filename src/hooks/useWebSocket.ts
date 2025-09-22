@@ -8,14 +8,15 @@ export const useWebSocket = () => {
   const [data, setData] = useState<any>({});
 
   const connect = useCallback(() => {
-    const host = location.host.replace(':3000', ':8080');
+    // Nahradíme port 3000 -> 8080 pro backend na Raspberry Pi
+    const host = location.host.replace(':3000', ':8080').replace(':4173', ':8080');
     const wsUrl = `ws://${host}/ws`;
     
     try {
       const websocket = new WebSocket(wsUrl);
       
       websocket.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected to backend:', wsUrl);
         setIsConnected(true);
         setWs(websocket);
       };
@@ -24,7 +25,7 @@ export const useWebSocket = () => {
         try {
           const message: WSMessage = JSON.parse(event.data);
           
-          // Add to logs
+          // Přidáme do logů
           const logEntry: LogEntry = {
             id: Date.now().toString(),
             timestamp: new Date().toISOString(),
@@ -34,11 +35,20 @@ export const useWebSocket = () => {
           
           setLogs(prev => [logEntry, ...prev.slice(0, 999)]);
           
-          // Update data based on topic
-          if (message.topic) {
+          // Zpracování bootstrap zprávy (počáteční stav)
+          if (message.bootstrap) {
+            console.log('Received bootstrap data:', message.bootstrap);
+            setData(prev => ({
+              ...prev,
+              bootstrap: message.bootstrap
+            }));
+          }
+          
+          // Aktualizace dat podle topic (MQTT zprávy)
+          else if (message.topic) {
             setData((prev: any) => ({
               ...prev,
-              [message.topic]: message.payload
+              [message.topic!]: message.payload
             }));
           }
           

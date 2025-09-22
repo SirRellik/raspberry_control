@@ -39,12 +39,47 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
   };
 
   const getRoomCurrentTemp = (roomName: string) => {
-    // Try to get current temp from WebSocket data
-    const intentKey = `intent/hvac/${roomName}`;
-    if (wsData[intentKey]?.current_temp !== undefined) {
-      return wsData[intentKey].current_temp;
+    // Prioritně používáme telemetrická data z MQTT
+    const tempKey = `home/tele/room/${roomName}/temp`;
+    if (wsData[tempKey]?.t !== undefined) {
+      return wsData[tempKey].t;
     }
+    
+    // Fallback na bootstrap data nebo počáteční API data
+    const bootstrapRoom = wsData.bootstrap?.rooms?.find((r: any) => r.name === roomName);
+    if (bootstrapRoom?.current_temp !== undefined) {
+      return bootstrapRoom.current_temp;
+    }
+    
     return rooms.find(r => r.name === roomName)?.current_temp;
+  };
+  
+  const getRoomMotion = (roomName: string) => {
+    const motionKey = `home/tele/room/${roomName}/motion`;
+    if (wsData[motionKey]?.active !== undefined) {
+      return wsData[motionKey].active;
+    }
+    
+    const bootstrapRoom = wsData.bootstrap?.rooms?.find((r: any) => r.name === roomName);
+    if (bootstrapRoom?.motion !== undefined) {
+      return bootstrapRoom.motion;
+    }
+    
+    return rooms.find(r => r.name === roomName)?.motion || false;
+  };
+  
+  const getRoomContact = (roomName: string) => {
+    const contactKey = `home/tele/room/${roomName}/contact`;
+    if (wsData[contactKey]?.open !== undefined) {
+      return wsData[contactKey].open;
+    }
+    
+    const bootstrapRoom = wsData.bootstrap?.rooms?.find((r: any) => r.name === roomName);
+    if (bootstrapRoom?.contact !== undefined) {
+      return bootstrapRoom.contact;
+    }
+    
+    return rooms.find(r => r.name === roomName)?.contact || false;
   };
 
   return (
@@ -65,6 +100,8 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
       }}>
         {rooms.map((room) => {
           const currentTemp = getRoomCurrentTemp(room.name);
+          const motion = getRoomMotion(room.name);
+          const contact = getRoomContact(room.name);
           const target = roomTargets[room.name] || room.target_temp;
           
           return (
@@ -97,20 +134,20 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '14px', color: '#6b7280' }}>Okno:</span>
                   <span style={{ 
-                    color: room.contact ? '#ef4444' : '#10b981',
+                    color: contact ? '#ef4444' : '#10b981',
                     fontWeight: '600'
                   }}>
-                    {room.contact ? 'Otevřené' : 'Zavřené'}
+                    {contact ? 'Otevřené' : 'Zavřené'}
                   </span>
                 </div>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <span style={{ fontSize: '14px', color: '#6b7280' }}>Pohyb:</span>
                   <span style={{ 
-                    color: room.motion ? '#10b981' : '#6b7280',
+                    color: motion ? '#10b981' : '#6b7280',
                     fontWeight: '600'
                   }}>
-                    {room.motion ? 'Detekován' : 'Nedetekován'}
+                    {motion ? 'Detekován' : 'Nedetekován'}
                   </span>
                 </div>
               </div>

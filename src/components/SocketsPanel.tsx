@@ -21,19 +21,38 @@ export const SocketsPanel: React.FC<SocketsPanelProps> = ({ sockets, wsData }) =
   };
 
   const getSocketData = (socketId: string) => {
-    // Try to get updated data from WebSocket
+    // Prioritně používáme data z MQTT telemetrie
     const statusKey = `home/status/${socketId}`;
     const teleKey = `home/tele/loads`;
     
-    let status = sockets.find(s => s.id === socketId)?.status || false;
-    let power = sockets.find(s => s.id === socketId)?.power_w || 0;
+    let status = false;
+    let power = 0;
     
+    // WebSocket MQTT data
     if (wsData[statusKey]) {
-      status = wsData[statusKey].status || status;
+      status = wsData[statusKey] === 'online' || wsData[statusKey].status || false;
     }
     
     if (wsData[teleKey]?.[socketId]) {
-      power = wsData[teleKey][socketId].power_w || power;
+      power = wsData[teleKey][socketId].power_w || 0;
+    }
+    
+    // Fallback na bootstrap data
+    if (!status && !power) {
+      const bootstrapSocket = wsData.bootstrap?.sockets?.find((s: any) => s.id === socketId);
+      if (bootstrapSocket) {
+        status = bootstrapSocket.status || false;
+        power = bootstrapSocket.power_w || 0;
+      }
+    }
+    
+    // Fallback na počáteční API data
+    if (!status && !power) {
+      const apiSocket = sockets.find(s => s.id === socketId);
+      if (apiSocket) {
+        status = apiSocket.status;
+        power = apiSocket.power_w;
+      }
     }
     
     return { status, power };

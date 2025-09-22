@@ -18,31 +18,25 @@ function App() {
     try {
       const status = await apiService.getStatus();
       setApiStatus(status);
+      console.log('Loaded initial status from backend:', status);
     } catch (error) {
       console.error('Failed to fetch status:', error);
+      // Při chybě nastavíme prázdný stav
+      setApiStatus({
+        grid_kw: 0,
+        pv_kw: 0,
+        tuv_c: 0,
+        rooms: [],
+        sockets: []
+      });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Set mock data for demonstration (backend not available)
-    setApiStatus({
-      grid_kw: 2.5,
-      pv_kw: 3.2,
-      tuv_c: 55,
-      rooms: [
-        { name: 'Obývák', current_temp: 22.5, target_temp: 22, contact: false, motion: true },
-        { name: 'Ložnice', current_temp: 20.1, target_temp: 20, contact: false, motion: false }
-      ],
-      sockets: [
-        { id: 'socket1', name: 'Pračka', status: true, power_w: 450.2 },
-        { id: 'socket2', name: 'Myčka', status: false, power_w: 0 },
-        { id: 'socket3', name: 'Sušička', status: true, power_w: 1200.5 }
-      ]
-    });
-    setLoading(false);
-    console.log('Backend not available, using mock data');
+    // Načteme počáteční stav z backendu
+    fetchStatus();
   }, []);
 
   const navStyle = {

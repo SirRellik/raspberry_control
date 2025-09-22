@@ -25,22 +25,43 @@ export const apiService = {
     }
   },
 
-  async getMockSpotPrices(dateISO: string): Promise<number[]> {
-    // Backend ještě neběží - používáme mock data
-    console.log(`Using mock data for spot prices for ${dateISO}`);
+  async getSpotPrices(dateISO: string): Promise<number[]> {
+    const url = `${API_BASE}/spot-prices?date=${encodeURIComponent(dateISO)}`;
     
-    // Simulace realistických spot cen s denním cyklem
-    return Array.from({ length: 24 }, (_, hour) => {
-      const basePrice = 80;
-      const dailyCycle = Math.sin((hour - 6) * Math.PI / 12) * 30;
-      const randomVariation = (Math.random() - 0.5) * 20;
+    try {
+      const response = await fetch(url, { 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
       
-      let hourlyMultiplier = 1;
-      if (hour >= 6 && hour <= 9) hourlyMultiplier = 1.3; // Ranní špička
-      if (hour >= 17 && hour <= 20) hourlyMultiplier = 1.4; // Večerní špička
-      if (hour >= 1 && hour <= 5) hourlyMultiplier = 0.7; // Noční minimum
+      if (!response.ok) {
+        throw new Error(`Spot prices API error: ${response.status} ${response.statusText}`);
+      }
       
-      return Math.max(20, basePrice + dailyCycle + randomVariation) * hourlyMultiplier;
-    });
+      const data = await response.json();
+      
+      // Validace dat podle specifikace backendu
+      if (!data || !Array.isArray(data.prices) || data.prices.length !== 24) {
+        throw new Error('Invalid spot prices response format');
+      }
+      
+      // Převod všech hodnot na čísla
+      const prices = data.prices.map((price: any) => {
+        const num = Number(price);
+        if (!Number.isFinite(num)) {
+          throw new Error(`Invalid price value: ${price}`);
+        }
+        return num;
+      });
+      
+      console.log(`Loaded spot prices for ${dateISO}:`, prices.slice(0, 3), '...');
+      return prices;
+      
+    } catch (error) {
+      console.error(`Failed to fetch spot prices for ${dateISO}:`, error);
+      throw error;
+    }
   }
 };
