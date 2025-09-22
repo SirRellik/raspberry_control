@@ -3,28 +3,37 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { PriceDataPoint } from '../types';
 import { apiService } from '../services/api';
 
+// Pomocná funkce pro formátování Date na YYYY-MM-DD v Europe/Prague timezone
+const toISODatePrague = (date: Date): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 interface PriceChartProps {
-  initialDate?: string;
+  initialDate?: Date;
 }
 
 export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
-  const [selectedDate, setSelectedDate] = useState(() => {
-    return initialDate || new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    return initialDate || new Date();
   });
   const [data, setData] = useState<PriceDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadPriceData = async (date: string) => {
+  const loadPriceData = async (date: Date) => {
     setLoading(true);
     try {
-      const prices = await apiService.getSpotPrices(date);
+      const dateISO = toISODatePrague(date);
+      const prices = await apiService.getSpotPrices(dateISO);
       const priceData = prices.map((price, hour) => ({
         hour,
         price
       }));
       setData(priceData);
     } catch (error) {
-      console.error('Error loading price data:', error);
+      console.error('Error loading price data in component:', error);
     } finally {
       setLoading(false);
     }
@@ -35,7 +44,10 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
   }, [selectedDate]);
 
   const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedDate(event.target.value);
+    const dateValue = event.target.value;
+    if (dateValue) {
+      setSelectedDate(new Date(dateValue + 'T00:00:00'));
+    }
   };
 
   const navigateDate = (direction: 'prev' | 'next') => {
@@ -45,18 +57,21 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
     } else {
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    setSelectedDate(currentDate.toISOString().split('T')[0]);
+    setSelectedDate(currentDate);
   };
 
-  const formatDateLabel = (dateStr: string) => {
-    const date = new Date(dateStr);
+  const formatDateLabel = (date: Date) => {
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    if (dateStr === today.toISOString().split('T')[0]) {
+    const dateISO = toISODatePrague(date);
+    const todayISO = toISODatePrague(today);
+    const tomorrowISO = toISODatePrague(tomorrow);
+    
+    if (dateISO === todayISO) {
       return 'Dnes';
-    } else if (dateStr === tomorrow.toISOString().split('T')[0]) {
+    } else if (dateISO === tomorrowISO) {
       return 'Zítra';
     } else {
       return date.toLocaleDateString('cs-CZ');
@@ -99,7 +114,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
     return baseColor;
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = toISODatePrague(selectedDate) === toISODatePrague(new Date());
   const minPrice = Math.min(...data.map(d => d.price));
   const maxPrice = Math.max(...data.map(d => d.price));
   const currentHour = new Date().getHours();
@@ -165,7 +180,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
           
           <input
             type="date"
-            value={selectedDate}
+            value={toISODatePrague(selectedDate)}
             onChange={handleDateChange}
             style={{
               padding: '4px 8px',

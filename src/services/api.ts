@@ -1,7 +1,6 @@
 import { ApiStatus, OverrideRequest } from '../types';
 
 const API_BASE = '/api';
-const SPOT_PRICE_API = 'https://smartenergyshare.com/api/daily-price-electric-spot';
 
 export const apiService = {
   async getStatus(): Promise<ApiStatus> {
@@ -26,21 +25,56 @@ export const apiService = {
     }
   },
 
-  async getSpotPrices(date: string): Promise<number[]> {
-    // Použití mock dat (externí API není dostupné)
-    return Array.from({ length: 24 }, (_, hour) => {
-      // Simulace realistických cen s denním cyklem
-      const basePrice = 80; // Základní cena
-      const dailyCycle = Math.sin((hour - 6) * Math.PI / 12) * 30; // Denní cyklus
-      const randomVariation = (Math.random() - 0.5) * 20; // Náhodná variace
+  async getSpotPrices(dateISO: string): Promise<number[]> {
+    const url = `${API_BASE}/spot-prices?date=${encodeURIComponent(dateISO)}`;
+    
+    try {
+      const response = await fetch(url, { 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
       
-      // Vyšší ceny ráno a večer, nižší v noci a poledne
-      let hourlyMultiplier = 1;
-      if (hour >= 6 && hour <= 9) hourlyMultiplier = 1.3; // Ranní špička
-      if (hour >= 17 && hour <= 20) hourlyMultiplier = 1.4; // Večerní špička
-      if (hour >= 1 && hour <= 5) hourlyMultiplier = 0.7; // Noční minimum
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      return Math.max(20, basePrice + dailyCycle + randomVariation) * hourlyMultiplier;
-    });
+      const data = await response.json();
+      
+      // Validace dat
+      if (!data?.prices || !Array.isArray(data.prices) || data.prices.length !== 24) {
+        throw new Error('Invalid spot prices payload - expected array of 24 prices');
+      }
+      
+      // Převod na čísla a validace
+      const prices = data.prices.map((price: any) => {
+        const num = Number(price);
+        if (!Number.isFinite(num)) {
+          throw new Error(`Invalid price value: ${price}`);
+        }
+        return num;
+      });
+      
+      return prices;
+      
+    } catch (error) {
+      console.error('Error fetching spot prices:', error);
+      
+      // Fallback na mock data v případě chyby
+      console.warn('Using fallback mock data for spot prices');
+      return Array.from({ length: 24 }, (_, hour) => {
+        const basePrice = 80;
+        const dailyCycle = Math.sin((hour - 6) * Math.PI / 12) * 30;
+        const randomVariation = (Math.random() - 0.5) * 20;
+        
+        let hourlyMultiplier = 1;
+        if (hour >= 6 && hour <= 9) hourlyMultiplier = 1.3;
+        if (hour >= 17 && hour <= 20) hourlyMultiplier = 1.4;
+        if (hour >= 1 && hour <= 5) hourlyMultiplier = 0.7;
+        
+        return Math.max(20, basePrice + dailyCycle + randomVariation) * hourlyMultiplier;
+      });
+    }
   }
 };
