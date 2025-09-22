@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { PriceDataPoint } from '../types';
 import { apiService } from '../services/api';
 
@@ -103,6 +103,24 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
   const minPrice = Math.min(...data.map(d => d.price));
   const maxPrice = Math.max(...data.map(d => d.price));
   const currentHour = new Date().getHours();
+
+  // Funkce pro formátování labelu ceny
+  const renderCustomLabel = (props: any) => {
+    const { x, y, width, value } = props;
+    return (
+      <text
+        x={x + width / 2}
+        y={y - 5}
+        fill="#374151"
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="500"
+      >
+        {value.toFixed(0)}
+      </text>
+    );
+  };
+
   return (
     <div style={{
       border: '1px solid #e5e7eb',
@@ -253,6 +271,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
               }}
             />
             <Bar dataKey="price" radius={[2, 2, 0, 0]}>
+              <LabelList content={renderCustomLabel} />
               {data.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
