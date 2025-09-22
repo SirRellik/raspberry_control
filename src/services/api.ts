@@ -27,26 +27,20 @@ export const apiService = {
   },
 
   async getSpotPrices(date: string): Promise<number[]> {
-    try {
-      const response = await fetch(`${SPOT_PRICE_API}?date=${date}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
+    // Použití mock dat (externí API není dostupné)
+    return Array.from({ length: 24 }, (_, hour) => {
+      // Simulace realistických cen s denním cyklem
+      const basePrice = 80; // Základní cena
+      const dailyCycle = Math.sin((hour - 6) * Math.PI / 12) * 30; // Denní cyklus
+      const randomVariation = (Math.random() - 0.5) * 20; // Náhodná variace
       
-      // API vrací pole 24 hodnot pro každou hodinu dne
-      if (Array.isArray(data) && data.length === 24) {
-        return data;
-      }
+      // Vyšší ceny ráno a večer, nižší v noci a poledne
+      let hourlyMultiplier = 1;
+      if (hour >= 6 && hour <= 9) hourlyMultiplier = 1.3; // Ranní špička
+      if (hour >= 17 && hour <= 20) hourlyMultiplier = 1.4; // Večerní špička
+      if (hour >= 1 && hour <= 5) hourlyMultiplier = 0.7; // Noční minimum
       
-      // Fallback pokud API nevrátí správný formát
-      throw new Error('Invalid API response format');
-    } catch (error) {
-      console.log('External API not available, using mock data');
-      // Fallback mock data
-      return Array.from({ length: 24 }, (_, hour) => 
-        50 + Math.sin(hour * Math.PI / 12) * 20 + Math.random() * 30
-      );
-    }
+      return Math.max(20, basePrice + dailyCycle + randomVariation) * hourlyMultiplier;
+    });
   }
 };
