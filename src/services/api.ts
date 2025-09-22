@@ -25,6 +25,7 @@ export const apiService = {
     }
   },
 
+  async getMockSpotPrices(dateISO: string): Promise<number[]> {
     // Backend ještě neběží - používáme mock data
     console.log(`Using mock data for spot prices for ${dateISO}`);
     
