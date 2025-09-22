@@ -22,19 +22,24 @@ export const SocketsPanel: React.FC<SocketsPanelProps> = ({ sockets, wsData }) =
 
   const getSocketData = (socketId: string) => {
     // Prioritně používáme data z MQTT telemetrie
-    const statusKey = `home/status/${socketId}`;
-    const teleKey = `home/tele/loads`;
+    const statusTopic = `home/status/${socketId}`;
+    const loadsTopic = `home/tele/loads`;
     
     let status = false;
     let power = 0;
     
     // WebSocket MQTT data
-    if (wsData[statusKey]) {
-      status = wsData[statusKey] === 'online' || wsData[statusKey].status || false;
+    if (wsData[statusTopic]) {
+      const statusData = wsData[statusTopic];
+      if (typeof statusData === 'string') {
+        status = statusData === 'online';
+      } else if (typeof statusData === 'object') {
+        status = statusData.status || false;
+      }
     }
     
-    if (wsData[teleKey]?.[socketId]) {
-      power = wsData[teleKey][socketId].power_w || 0;
+    if (wsData[loadsTopic]?.[socketId]) {
+      power = wsData[loadsTopic][socketId].power_w || 0;
     }
     
     // Fallback na bootstrap data

@@ -50,3 +50,9 @@ export interface OverrideRequest {
   type: string;
   payload: any;
 }
+
+export interface DataMessage {
+  topic?: string;
+  payload?: any;
+  bootstrap?: any;
+}

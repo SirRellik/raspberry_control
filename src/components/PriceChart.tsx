@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { PriceDataPoint } from '../types';
-import { apiService } from '../services/api';
 
 // Pomocná funkce pro formátování Date na YYYY-MM-DD v Europe/Prague timezone
 const toISODatePrague = (date: Date): string => {
@@ -12,38 +11,39 @@ const toISODatePrague = (date: Date): string => {
 };
 
 interface PriceChartProps {
+  wsData: any;
   initialDate?: Date;
 }
 
-export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
+export const PriceChart: React.FC<PriceChartProps> = ({ wsData, initialDate }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     return initialDate || new Date();
   });
   const [data, setData] = useState<PriceDataPoint[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  const loadPriceData = async (date: Date) => {
-    setLoading(true);
-    try {
-      const dateISO = toISODatePrague(date);
-      const prices = await apiService.getSpotPrices(dateISO);
-      const priceData = prices.map((price, hour) => ({
-        hour,
-        price
-      }));
-      setData(priceData);
-    } catch (error) {
-      console.error('Error loading spot prices:', error);
-      // Při chybě zobrazíme prázdný graf
-      setData([]);
-    } finally {
-      setLoading(false);
+  const loadPriceData = (date: Date) => {
+    const dateKey = date.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+    const topicKey = `home/plan/prices/day/${dateKey}`;
+    
+    if (wsData[topicKey] && wsData[topicKey].eur_mwh) {
+      const prices = wsData[topicKey].eur_mwh;
+      if (Array.isArray(prices) && prices.length >= 24) {
+        const priceData = prices.slice(0, 24).map((price, hour) => ({
+          hour,
+          price: Number(price)
+        }));
+        setData(priceData);
+        return;
+      }
     }
+    
+    // Pokud nemáme data, zobrazíme prázdný graf
+    setData([]);
   };
 
   useEffect(() => {
     loadPriceData(selectedDate);
-  }, [selectedDate]);
+  }, [selectedDate, wsData]);
 
   const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const dateValue = event.target.value;
@@ -244,7 +244,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
         )}
       </div>
       
-      {loading ? (
+      {data.length === 0 ? (
         <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -252,7 +252,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ initialDate }) => {
           height: '250px',
           color: '#6b7280'
         }}>
-          Načítání cen...
+          Žádná data o cenách pro vybraný den
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="75%">

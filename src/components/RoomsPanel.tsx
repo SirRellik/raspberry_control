@@ -40,9 +40,9 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
 
   const getRoomCurrentTemp = (roomName: string) => {
     // Prioritně používáme telemetrická data z MQTT
-    const tempKey = `home/tele/room/${roomName}/temp`;
-    if (wsData[tempKey]?.t !== undefined) {
-      return wsData[tempKey].t;
+    const tempTopic = `home/tele/room/${roomName}/temp`;
+    if (wsData[tempTopic]?.t !== undefined) {
+      return wsData[tempTopic].t;
     }
     
     // Fallback na bootstrap data nebo počáteční API data
@@ -55,9 +55,9 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
   };
   
   const getRoomMotion = (roomName: string) => {
-    const motionKey = `home/tele/room/${roomName}/motion`;
-    if (wsData[motionKey]?.active !== undefined) {
-      return wsData[motionKey].active;
+    const motionTopic = `home/tele/room/${roomName}/motion`;
+    if (wsData[motionTopic]?.active !== undefined) {
+      return wsData[motionTopic].active;
     }
     
     const bootstrapRoom = wsData.bootstrap?.rooms?.find((r: any) => r.name === roomName);
@@ -69,9 +69,9 @@ export const RoomsPanel: React.FC<RoomsPanelProps> = ({ rooms, wsData }) => {
   };
   
   const getRoomContact = (roomName: string) => {
-    const contactKey = `home/tele/room/${roomName}/contact`;
-    if (wsData[contactKey]?.open !== undefined) {
-      return wsData[contactKey].open;
+    const contactTopic = `home/tele/room/${roomName}/contact`;
+    if (wsData[contactTopic]?.open !== undefined) {
+      return wsData[contactTopic].open;
     }
     
     const bootstrapRoom = wsData.bootstrap?.rooms?.find((r: any) => r.name === roomName);

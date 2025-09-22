@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { DeviceCard } from '../components/DeviceCard';
 import { PowerChart } from '../components/PowerChart';
 import { PriceChart } from '../components/PriceChart';
-import { ApiStatus } from '../types';
+import { ApiStatus, ChartDataPoint } from '../types';
 
 interface OverviewProps {
   apiStatus: ApiStatus | null;
@@ -10,24 +10,31 @@ interface OverviewProps {
 }
 
 export const Overview: React.FC<OverviewProps> = ({ apiStatus, wsData }) => {
-  // Generate mock chart data for demonstration
-  const chartData = useMemo(() => {
-    const data = [];
+  // Udržuj historii posledních 24 hodin (max 1440 bodů, 1/min)
+  const chartData = useMemo((): ChartDataPoint[] => {
+    const data: ChartDataPoint[] = [];
     const now = new Date();
     
-    for (let i = 23; i >= 0; i--) {
+    // Generuj mock data pro demonstraci (dokud nemáme historii z backendu)
+    for (let i = 1439; i >= 0; i--) {
       const time = new Date(now);
-      time.setHours(time.getHours() - i);
+      time.setMinutes(time.getMinutes() - i);
       
       data.push({
-        time: time.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }),
-        pv: Math.max(0, Math.sin((time.getHours() - 6) * Math.PI / 12) * 5 + Math.random() * 2),
-        grid: -2 + Math.random() * 4
+        time: time.toLocaleTimeString('cs-CZ', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        pv: Math.max(0, Math.sin((time.getHours() - 6) * Math.PI / 12) * 5 + Math.random() * 1),
+        grid: -1 + Math.random() * 3
       });
     }
     
+    // TODO: V budoucnu zde implementovat skutečnou historii z wsData
+    // Například udržovat buffer posledních hodnot z home/tele/grid a home/tele/inverter
+    
     return data;
-  }, []);
+  }, [wsData]);
 
   const currentValues = {
     // Prioritně používáme data z WebSocket (MQTT telemetrie)
@@ -81,7 +88,7 @@ export const Overview: React.FC<OverviewProps> = ({ apiStatus, wsData }) => {
         gap: '24px'
       }}>
         <PowerChart data={chartData} />
-        <PriceChart />
+        <PriceChart wsData={wsData} />
       </div>
     </div>
   );

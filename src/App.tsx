@@ -5,14 +5,14 @@ import { Controls } from './pages/Controls';
 import { RoomsPanel } from './components/RoomsPanel';
 import { LogPanel } from './components/LogPanel';
 import { SocketsPanel } from './components/SocketsPanel';
-import { useWebSocket } from './hooks/useWebSocket';
+import { useDataAdapter } from './hooks/useDataAdapter';
 import { apiService } from './services/api';
 import { ApiStatus } from './types';
 
 function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const { ws, isConnected, logs, data: wsData } = useWebSocket();
+  const { adapter, isConnected, logs, data: wsData } = useDataAdapter();
 
   const fetchStatus = async () => {
     try {
