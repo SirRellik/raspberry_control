@@ -40,7 +40,6 @@ function App() {
         console.log('Backend not available, using mock data');
 
     // Try to fetch real data after a short delay
-    setTimeout(fetchStatus, 1000);
   }, []);
 
   const navStyle = {
