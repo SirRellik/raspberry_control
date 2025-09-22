@@ -34,12 +34,15 @@ function App() {
       rooms: [
         { name: 'Obývák', current_temp: 22.5, target_temp: 22, contact: false, motion: true },
         { name: 'Ložnice', current_temp: 20.1, target_temp: 20, contact: false, motion: false }
+      ],
+      sockets: [
+        { id: 'socket1', name: 'Pračka', status: true, power_w: 450.2 },
+        { id: 'socket2', name: 'Myčka', status: false, power_w: 0 },
+        { id: 'socket3', name: 'Sušička', status: true, power_w: 1200.5 }
       ]
     });
-        // Backend not available, keep mock data
-        console.log('Backend not available, using mock data');
-
-    // Try to fetch real data after a short delay
+    setLoading(false);
+    console.log('Backend not available, using mock data');
   }, []);
 
   const navStyle = {
