@@ -1,0 +1,43 @@
+services:
+  backend:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      MQTT_URL: "mqtt://192.168.1.207:1883"
+      MQTT_USER: "skaly57"
+      MQTT_PASS: "8602056243"
+      TOPIC_BASE: "home"
+      PEER_BOILER: "http://192.168.1.149"
+      BOILER_RELAY_ID: "1"
+      SES_PRICE_URL: "https://smartenergyshare.com/api/daily-price-electric-spot?date={date}"
+    command: >
+      bash -lc "
+        pip install -r requirements.txt &&
+        uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers
+      "
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /web
+    volumes:
+      - ./frontend:/web
+    environment:
+      VITE_API_BASE: "http://192.168.1.207:8080"
+      VITE_MQTT_URL: "ws://192.168.1.207:9001"
+      VITE_MQTT_USER: "skaly57"
+      VITE_MQTT_PASS: "8602056243"
+      VITE_MQTT_TOPIC_BASE: "home"
+    command: >
+      sh -lc "
+        (npm ci || npm i) &&
+        npm run build &&
+        npx --yes serve -s dist -l 4173
+      "
+    ports:
+      - "3000:4173"
+    restart: unless-stopped
