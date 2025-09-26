@@ -1,0 +1,366 @@
+import React, { useState, useEffect } from 'react';
+
+const API_BASE_URL = 'http://192.168.1.207:8001';
+
+const dashboardAPI = {
+  getData: () => fetch(`${API_BASE_URL}/api/dashboard/data`).then(r => r.json()),
+  getCurrentPower: () => fetch(`${API_BASE_URL}/api/power/current`).then(r => r.json())
+};
+
+const PowerChart = () => {
+  const [powerData, setPowerData] = useState([]);
+  const [currentValues, setCurrentValues] = useState({grid: 0, pv: 0, consumption: 0});
+
+  useEffect(() => {
+    const fetchPowerData = async () => {
+      try {
+        const current = await dashboardAPI.getCurrentPower();
+        setCurrentValues({
+          grid: current.grid || 0,
+          pv: current.pv || 0,
+          consumption: current.consumption || 0
+        });
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('cs-CZ', {hour: '2-digit', minute: '2-digit'});
+
+        setPowerData(prev => {
+          const newData = [...prev, {
+            time: timeStr,
+            grid: current.grid || 0,
+            pv: current.pv || 0,
+            consumption: current.consumption || 0,
+            timestamp: Date.now()
+          }];
+          return newData.slice(-50);
+        });
+
+      } catch (error) {
+        console.error('Power fetch error:', error);
+      }
+    };
+
+    fetchPowerData();
+    const interval = setInterval(fetchPowerData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const maxValue = Math.max(...powerData.map(d => Math.max(Math.abs(d.grid), d.pv, d.consumption)));
+  const svgHeight = 250;
+  const svgWidth = 500;
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 h-96">
+      <h3 className="text-xl font-semibold mb-4 text-white">
+        Výkon - real-time (každých 5s)
+      </h3>
+      
+      <div className="mb-4 text-sm text-gray-300">
+        <div className="flex flex-wrap gap-4">
+          <span>Síť: <span className={`font-bold ${currentValues.grid < 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {(currentValues.grid * 1000).toFixed(0)}W
+          </span></span>
+          <span>PV: <span className="text-green-400 font-bold">
+            {(currentValues.pv * 1000).toFixed(0)}W
+          </span></span>
+          <span>Spotřeba: <span className="text-blue-400 font-bold">
+            {(currentValues.consumption * 1000).toFixed(0)}W
+          </span></span>
+        </div>
+      </div>
+
+      {powerData.length > 0 && (
+        <svg width={svgWidth} height={svgHeight} className="w-full h-48">
+          <polyline
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="2"
+            points={powerData.map((d, i) => 
+              `${i * (svgWidth / powerData.length)},${svgHeight - ((Math.abs(d.grid) / maxValue) * svgHeight * 0.8) - 20}`
+            ).join(' ')}
+          />
+          <polyline
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="2"
+            points={powerData.map((d, i) => 
+              `${i * (svgWidth / powerData.length)},${svgHeight - ((d.pv / maxValue) * svgHeight * 0.8) - 20}`
+            ).join(' ')}
+          />
+          <polyline
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth="2"
+            points={powerData.map((d, i) => 
+              `${i * (svgWidth / powerData.length)},${svgHeight - ((d.consumption / maxValue) * svgHeight * 0.8) - 20}`
+            ).join(' ')}
+          />
+        </svg>
+      )}
+      
+      <div className="flex justify-center gap-6 text-xs mt-2">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 bg-red-500 rounded"></div>
+          <span className="text-gray-300">Síť</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 bg-green-500 rounded"></div>
+          <span className="text-gray-300">PV</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 bg-blue-500 rounded"></div>
+          <span className="text-gray-300">Spotřeba</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PriceChart = ({ data, currentPrice }) => {
+  const [showYesterday, setShowYesterday] = useState(false);
+  const [yesterdayData, setYesterdayData] = useState([]);
+  
+  useEffect(() => {
+    const fetchYesterday = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/prices/yesterday`);
+        const result = await response.json();
+        setYesterdayData(result.data || []);
+      } catch (error) {
+        console.error('Yesterday prices error:', error);
+      }
+    };
+    fetchYesterday();
+  }, []);
+
+  const currentHour = new Date().getHours();
+  const sourceData = showYesterday ? yesterdayData : data;
+  
+  const priceData = Array.from({length: 24}, (_, i) => {
+    const price = sourceData.find(p => p.hour === i)?.price_eur || 0;
+    const hasData = Boolean(sourceData.find(p => p.hour === i));
+    
+    return {
+      hour: i,
+      price: price,
+      time: `${i.toString().padStart(2, '0')}h`,
+      isCurrent: i === currentHour && !showYesterday,
+      hasData: hasData || showYesterday,
+      isExpensive: price > 100,
+      isCheap: price < 60
+    };
+  });
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 h-96">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-white">
+          Spot ceny - {showYesterday ? 'včera' : 'dnes'}
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowYesterday(false)}
+            className={`px-3 py-1 text-sm rounded ${!showYesterday ? 'bg-blue-600' : 'bg-gray-600'} text-white`}
+          >
+            Dnes
+          </button>
+          <button
+            onClick={() => setShowYesterday(true)}
+            className={`px-3 py-1 text-sm rounded ${showYesterday ? 'bg-blue-600' : 'bg-gray-600'} text-white`}
+          >
+            Včera
+          </button>
+        </div>
+      </div>
+      
+      {!showYesterday && (
+        <div className="mb-4 text-sm text-gray-300">
+          Aktuální cena: <span className="text-yellow-400 font-bold">
+            {currentPrice.toFixed(2)} €/MWh
+          </span>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-12 gap-1 h-48">
+        {priceData.map((h, index) => (
+          <div key={index} className="flex flex-col">
+            <div 
+              className={`flex-1 rounded-t text-center text-xs p-1 ${
+                !h.hasData ? 'bg-gray-700' :
+                h.isCurrent ? 'bg-yellow-500' : 
+                h.isExpensive ? 'bg-red-500' : 
+                h.isCheap ? 'bg-green-500' : 'bg-blue-500'
+              }`}
+              style={{
+                height: h.hasData ? `${Math.max(10, (h.price / 150) * 100)}%` : '20%'
+              }}
+              title={`${h.time}: ${h.price.toFixed(1)} €/MWh`}
+            >
+              <div className="text-white text-xs font-semibold">
+                {h.hasData ? h.price.toFixed(0) : '?'}
+              </div>
+            </div>
+            <div className="text-center text-xs text-gray-400 mt-1">
+              {h.time}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const App = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await dashboardAPI.getData();
+        setDashboardData(data);
+        setError(null);
+      } catch (err) {
+        setError('Chyba načítání dat');
+        console.error('API Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-xl">Načítání...</div>
+      </div>
+    );
+  }
+
+  if (error || !dashboardData) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-xl text-red-500">{error || 'Chyba načítání dat'}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">SES Control Dashboard v0.2</h1>
+          <div className="flex space-x-4">
+            <span className={`px-3 py-1 rounded-full text-sm ${
+              dashboardData.system.rpc_connected ? 'bg-green-600' : 'bg-red-600'
+            }`}>
+              {dashboardData.system.rpc_connected ? 'RPC OK' : 'RPC ERROR'}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              {dashboardData.devices.pata_domu.name}
+            </h3>
+            <div className="text-3xl font-bold text-blue-400">
+              {dashboardData.devices.pata_domu.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.devices.pata_domu.status.toUpperCase()}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {dashboardData.devices.pata_domu.ip}
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              {dashboardData.devices.fve_mereni.name}
+            </h3>
+            <div className="text-3xl font-bold text-green-400">
+              {dashboardData.devices.fve_mereni.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.devices.fve_mereni.status.toUpperCase()}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {dashboardData.devices.fve_mereni.ip}
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">Grid Power</h3>
+            <div className={`text-3xl font-bold ${
+              dashboardData.power.grid < 0 ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {dashboardData.devices.grid_power.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.devices.grid_power.flow.toUpperCase()}
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">Spotřeba domu</h3>
+            <div className="text-3xl font-bold text-purple-400">
+              {dashboardData.devices.house_consumption.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">VYPOČTENO</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <PowerChart />
+          <PriceChart 
+            data={dashboardData.prices.hourly || []} 
+            currentPrice={dashboardData.prices.current || 85.0} 
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-4 text-white">Energetická bilance</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">PV výroba:</span>
+                <span className="text-green-400 font-semibold">
+                  {(dashboardData.power.pv * 1000).toFixed(0)} W
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Spotřeba domu:</span>
+                <span className="text-blue-400 font-semibold">
+                  {(dashboardData.power.consumption * 1000).toFixed(0)} W
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Tok ze/do sítě:</span>
+                <span className={`font-semibold ${dashboardData.power.grid < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(dashboardData.power.grid * 1000).toFixed(0)} W
+                </span>
+              </div>
+              <div className="border-t border-gray-600 pt-2 mt-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Soběstačnost:</span>
+                  <span className="text-yellow-400 font-semibold">
+                    {dashboardData.power.consumption > 0 ? 
+                      Math.min(100, (dashboardData.power.pv / dashboardData.power.consumption * 100)).toFixed(0) : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;

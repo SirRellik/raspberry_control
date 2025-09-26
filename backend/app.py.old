@@ -1,0 +1,379 @@
+from __future__ import annotations
+from datetime import date
+import httpx
+import time
+import os
+import asyncio
+from fastapi import FastAPI, Body
+from fastapi.middleware.cors import CORSMiddleware
+from settings import SES_PRICE_URL
+from logic.shelly import boiler_set
+from logic.mqttbus import MQTTBus
+
+app = FastAPI(title="SES Control", version="0.1")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Globální proměnné
+power_data = {"grid": 0, "pv": 0, "timestamp": time.time()}
+shelly_devices = {
+    "shellypro1pm": {"power": 0, "status": "offline", "timestamp": 0},
+    "shellypro2": {"power": 0, "status": "offline", "timestamp": 0},
+    "shellypro3em": {"power": 0, "status": "offline", "timestamp": 0}
+}
+mqtt_topics = []
+current_prices = []
+mqtt_client = None
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
+
+@app.get("/api/dashboard/data")
+async def get_dashboard_data():
+    current_hour = int(time.strftime("%H"))
+    current_price = 0
+    if current_prices:
+        price_data = next((p for p in current_prices if p.get("hour") == current_hour), None)
+        current_price = price_data.get("price_eur", 0) if price_data else 0
+    
+    return {
+        "power": power_data,
+        "devices": {
+            "shelly_1pm": {
+                "power": shelly_devices["shellypro1pm"]["power"],
+                "status": shelly_devices["shellypro1pm"]["status"],
+                "name": "Shelly 1PM"
+            },
+            "shelly_pro2": {
+                "power": shelly_devices["shellypro2"]["power"], 
+                "status": shelly_devices["shellypro2"]["status"],
+                "name": "Shelly Pro2"
+            },
+            "grid_power": {
+                "power": abs(power_data.get("grid", 0) * 1000),
+                "status": "online" if power_data.get("timestamp", 0) > time.time() - 30 else "offline",
+                "name": "Grid Power"
+            }
+        },
+        "prices": {
+            "current": current_price,
+            "hourly": current_prices[:12]
+        },
+        "mqtt": {
+            "connected": mqtt_client is not None,
+            "topics": len(mqtt_topics)
+        },
+        "timestamp": time.time()
+    }
+
+# Zbytek původních endpointů...
+@app.post("/api/boiler")
+async def api_boiler(payload: dict = Body(...)):
+    on = bool(payload.get("on"))
+    return await boiler_set(on)
+
+@app.get("/api/prices/today")
+async def prices_today():
+    url = SES_PRICE_URL.format(date=date.today().isoformat())
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        data = r.json()
+        global current_prices
+        current_prices = data.get("data", [])
+        return data
+
+@app.get("/api/power/current")
+async def get_current_power():
+    return power_data
+
+# MQTT startup s rozšířeným handlerem
+@app.on_event("startup")
+async def startup_event():
+    global mqtt_client, power_data, shelly_devices, mqtt_topics
+    
+    mqtt_url = os.getenv("MQTT_URL", "")
+    if mqtt_url:
+        print(f"Connecting to MQTT: {mqtt_url}")
+        try:
+            mqtt_client = MQTTBus(mqtt_url, "ses-backend")
+            
+            def handle_mqtt_message(topic: str, payload):
+                global power_data, shelly_devices, mqtt_topics
+                
+                if topic not in mqtt_topics:
+                    mqtt_topics.append(topic)
+                
+                current_time = time.time()
+                print(f"MQTT received: {topic}")
+                
+                # Shelly3EM
+                if "shellypro3em63" in topic and "status/em:0" in topic:
+                    if isinstance(payload, dict) and "total_act_power" in payload:
+                        total_power = payload["total_act_power"]
+                        power_data = {
+                            "grid": total_power / 1000,
+                            "pv": max(0, -total_power / 1000) if total_power < 0 else 0,
+                            "timestamp": current_time
+                        }
+                        shelly_devices["shellypro3em"]["power"] = abs(total_power)
+                        shelly_devices["shellypro3em"]["status"] = "online"
+                        shelly_devices["shellypro3em"]["timestamp"] = current_time
+                
+                # Shelly1PM a Pro2 (přidat později když budete mít data)
+                elif "shellypro1pm" in topic or "shellypro2" in topic:
+                    device_key = "shellypro1pm" if "shellypro1pm" in topic else "shellypro2"
+                    shelly_devices[device_key]["status"] = "online"
+                    shelly_devices[device_key]["timestamp"] = current_time
+            
+            mqtt_client.on(handle_mqtt_message)
+            print("MQTT connected and listening")
+            
+        except Exception as e:
+            print(f"MQTT connection failed: {e}")
+
+@app.get("/api/prices/yesterday")
+async def prices_yesterday():
+    yesterday = date.today() - timedelta(days=1)
+    url = SES_PRICE_URL.format(date=yesterday.isoformat())
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+# Opravit dashboard endpoint
+@app.get("/api/dashboard/data")
+async def get_dashboard_data():
+    global current_prices
+    
+    # Načíst dnešní ceny, pokud nejsou načtené
+    if not current_prices:
+        try:
+            prices_response = await prices_today()
+            current_prices = prices_response.get("data", [])
+        except:
+            current_prices = []
+    
+    current_hour = int(time.strftime("%H"))
+    current_price = 85.73  # Fallback
+    if current_prices:
+        price_data = next((p for p in current_prices if p.get("hour") == current_hour), None)
+        current_price = price_data.get("price_eur", current_price) if price_data else current_price
+    
+    return {
+        "power": power_data,
+        "devices": {
+            "shelly_1pm": {
+                "power": shelly_devices["shellypro1pm"]["power"],
+                "status": shelly_devices["shellypro1pm"]["status"],
+                "name": "Shelly 1PM"
+            },
+            "shelly_pro2": {
+                "power": shelly_devices["shellypro2"]["power"], 
+                "status": shelly_devices["shellypro2"]["status"],
+                "name": "Shelly Pro2"
+            },
+            "grid_power": {
+                "power": abs(power_data.get("grid", 0) * 1000),
+                "status": "online" if power_data.get("timestamp", 0) > time.time() - 30 else "offline",
+                "name": "Grid Power"
+            }
+        },
+        "prices": {
+            "current": current_price,
+            "hourly": current_prices  # Vrátit kompletní pole
+        },
+        "mqtt": {
+            "connected": mqtt_client is not None,
+            "topics": len(mqtt_topics)
+        },
+        "timestamp": time.time()
+    }
+
+@app.get("/api/prices/yesterday")
+async def prices_yesterday():
+    yesterday = date.today() - timedelta(days=1)
+    url = SES_PRICE_URL.format(date=yesterday.isoformat())
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+# Opravit dashboard endpoint
+@app.get("/api/dashboard/data")
+async def get_dashboard_data():
+    global current_prices
+    
+    # Načíst dnešní ceny, pokud nejsou načtené
+    if not current_prices:
+        try:
+            prices_response = await prices_today()
+            current_prices = prices_response.get("data", [])
+        except:
+            current_prices = []
+    
+    current_hour = int(time.strftime("%H"))
+    current_price = 85.73  # Fallback
+    if current_prices:
+        price_data = next((p for p in current_prices if p.get("hour") == current_hour), None)
+        current_price = price_data.get("price_eur", current_price) if price_data else current_price
+    
+    return {
+        "power": power_data,
+        "devices": {
+            "shelly_1pm": {
+                "power": shelly_devices["shellypro1pm"]["power"],
+                "status": shelly_devices["shellypro1pm"]["status"],
+                "name": "Shelly 1PM"
+            },
+            "shelly_pro2": {
+                "power": shelly_devices["shellypro2"]["power"], 
+                "status": shelly_devices["shellypro2"]["status"],
+                "name": "Shelly Pro2"
+            },
+            "grid_power": {
+                "power": abs(power_data.get("grid", 0) * 1000),
+                "status": "online" if power_data.get("timestamp", 0) > time.time() - 30 else "offline",
+                "name": "Grid Power"
+            }
+        },
+        "prices": {
+            "current": current_price,
+            "hourly": current_prices  # Vrátit kompletní pole
+        },
+        "mqtt": {
+            "connected": mqtt_client is not None,
+            "topics": len(mqtt_topics)
+        },
+        "timestamp": time.time()
+    }
+
+# Konfigurace Shelly zařízení podle IP
+SHELLY_DEVICES_CONFIG = {
+    "192.168.1.94": {"name": "Pata domu", "type": "3em", "mqtt": False},  # Hlavní měření
+    "192.168.1.6": {"name": "FVE měření", "type": "3em", "mqtt": False},  # FVE měření  
+    "192.168.1.98": {"name": "Shelly 1PM", "type": "1pm", "mqtt": True},   # MQTT funguje
+    "192.168.1.153": {"name": "Shelly Pro2", "type": "pro2", "mqtt": True}  # MQTT funguje
+}
+
+import asyncio
+from datetime import timedelta
+
+async def fetch_shelly_rpc_data():
+    """Načte data ze Shelly zařízení přes RPC HTTP"""
+    global power_data, shelly_devices
+    
+    try:
+        # Pata domu (hlavní měření) - 192.168.1.94
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://192.168.1.94/rpc/EM.GetStatus?id=0")
+            if response.status_code == 200:
+                em_data = response.json()
+                total_power = em_data.get("total_act_power", 0)
+                
+                # Aktualizovat hlavní power_data z paty domu
+                power_data = {
+                    "grid": total_power / 1000,  # kW
+                    "pv": max(0, -total_power / 1000) if total_power < 0 else 0,
+                    "timestamp": time.time(),
+                    "phases": {
+                        "a": em_data.get("a_act_power", 0) / 1000,
+                        "b": em_data.get("b_act_power", 0) / 1000,
+                        "c": em_data.get("c_act_power", 0) / 1000
+                    }
+                }
+                
+                shelly_devices["pata_domu"] = {
+                    "power": abs(total_power),
+                    "status": "online",
+                    "timestamp": time.time(),
+                    "ip": "192.168.1.94"
+                }
+                print(f"Pata domu RPC: {total_power}W")
+    
+    except Exception as e:
+        print(f"RPC fetch error pata domu: {e}")
+    
+    try:
+        # FVE měření - 192.168.1.6
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://192.168.1.6/rpc/EM.GetStatus?id=0")
+            if response.status_code == 200:
+                em_data = response.json()
+                fve_power = em_data.get("total_act_power", 0)
+                
+                shelly_devices["fve_mereni"] = {
+                    "power": abs(fve_power),
+                    "status": "online", 
+                    "timestamp": time.time(),
+                    "ip": "192.168.1.6"
+                }
+                print(f"FVE RPC: {fve_power}W")
+                
+    except Exception as e:
+        print(f"RPC fetch error FVE: {e}")
+
+# Spustit RPC fetch každých 5 sekund
+async def start_rpc_polling():
+    while True:
+        await fetch_shelly_rpc_data()
+        await asyncio.sleep(5)
+
+# Přidat do startup
+@app.on_event("startup") 
+async def startup_event():
+    global mqtt_client, power_data, shelly_devices, mqtt_topics
+    
+    # MQTT setup (stávající kód)
+    mqtt_url = os.getenv("MQTT_URL", "")
+    if mqtt_url:
+        # ... stávající MQTT kód ...
+        pass
+        
+    # Spustit RPC polling
+    asyncio.create_task(start_rpc_polling())
+    print("RPC polling started for Shelly devices")
+
+# Aktualizovat dashboard API
+@app.get("/api/dashboard/data")
+async def get_dashboard_data():
+    current_hour = int(time.strftime("%H"))
+    current_price = 85.73
+    
+    return {
+        "power": power_data,
+        "devices": {
+            "pata_domu": {
+                "power": shelly_devices.get("pata_domu", {}).get("power", 0),
+                "status": shelly_devices.get("pata_domu", {}).get("status", "offline"),
+                "name": "Pata domu (192.168.1.94)",
+                "ip": "192.168.1.94"
+            },
+            "fve_mereni": {
+                "power": shelly_devices.get("fve_mereni", {}).get("power", 0),
+                "status": shelly_devices.get("fve_mereni", {}).get("status", "offline"), 
+                "name": "FVE měření (192.168.1.6)",
+                "ip": "192.168.1.6"
+            },
+            "grid_power": {
+                "power": abs(power_data.get("grid", 0) * 1000),
+                "status": "online" if power_data.get("timestamp", 0) > time.time() - 30 else "offline",
+                "name": "Grid Power (z paty domu)"
+            }
+        },
+        "prices": {
+            "current": current_price,
+            "hourly": current_prices
+        },
+        "mqtt": {
+            "connected": mqtt_client is not None,
+            "topics": len(mqtt_topics)
+        },
+        "timestamp": time.time()
+    }

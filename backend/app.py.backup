@@ -1,0 +1,125 @@
+from __future__ import annotations
+from datetime import date
+import httpx
+import time
+import os
+import asyncio
+from fastapi import FastAPI, Body
+from fastapi.middleware.cors import CORSMiddleware
+from settings import SES_PRICE_URL
+from logic.shelly import boiler_set
+from logic.mqttbus import MQTTBus
+
+app = FastAPI(title="SES Control", version="0.1")
+
+# CORS – aby frontend na :3000 mohl volat backend na :8001
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Globální proměnné pro MQTT data
+power_data = {"grid": 0, "pv": 0, "timestamp": time.time()}
+shelly_data = {}
+mqtt_client = None
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
+
+@app.post("/api/boiler")
+async def api_boiler(payload: dict = Body(...)):
+    on = bool(payload.get("on"))
+    return await boiler_set(on)
+
+@app.get("/api/prices/today")
+async def prices_today():
+    url = SES_PRICE_URL.format(date=date.today().isoformat())
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+@app.get("/api/prices/{day}")
+async def prices_by_day(day: date):
+    url = SES_PRICE_URL.format(date=day.isoformat())
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+# Nové API endpointy pro real-time data
+@app.get("/api/power/current")
+async def get_current_power():
+    return power_data
+
+@app.get("/api/shelly/status")
+async def get_shelly_status():
+    return shelly_data
+
+@app.get("/api/power/history")
+async def get_power_history():
+    # Simulovat 24h data na základě aktuálních hodnot
+    current = power_data
+    history = []
+    
+    for i in range(24):
+        hour = (time.time() - (23-i) * 3600)
+        variation = 0.8 + (i % 6) * 0.1  # Simulace variací během dne
+        
+        history.append({
+            "time": time.strftime("%H:%M", time.localtime(hour)),
+            "timestamp": hour,
+            "grid": current["grid"] * variation,
+            "pv": current["pv"] * variation,
+            "total": current["grid"] * variation + current["pv"] * variation
+        })
+    
+    return history
+
+# MQTT startup event
+@app.on_event("startup")
+async def startup_event():
+    global mqtt_client, power_data, shelly_data
+    
+    mqtt_url = os.getenv("MQTT_URL", "")
+    if mqtt_url:
+        print(f"Connecting to MQTT: {mqtt_url}")
+        
+        try:
+            mqtt_client = MQTTBus(mqtt_url, "ses-backend")
+            
+            def handle_mqtt_message(topic: str, payload):
+                global power_data, shelly_data
+                print(f"MQTT received: {topic} = {payload}")
+                
+                # Shelly3EM data - téma končí na /status/em:0
+                if "shellypro3em63" in topic and "status/em:0" in topic:
+                    if isinstance(payload, dict) and "total_act_power" in payload:
+                        total_power = payload["total_act_power"]
+                        print(f"Power data: {total_power}W")
+                        
+                        power_data = {
+                            "grid": total_power / 1000,  # Převést na kW
+                            "pv": max(0, -total_power / 1000) if total_power < 0 else 0,  # PV pouze při dodávce
+                            "timestamp": time.time(),
+                            "phases": {
+                                "a": payload.get("a_act_power", 0) / 1000,
+                                "b": payload.get("b_act_power", 0) / 1000, 
+                                "c": payload.get("c_act_power", 0) / 1000
+                            }
+                        }
+                
+                # Ostatní Shelly zařízení
+                elif "shellypro" in topic:
+                    shelly_data[topic] = payload
+            
+            mqtt_client.on(handle_mqtt_message)
+            print("MQTT connected and listening")
+            
+        except Exception as e:
+            print(f"MQTT connection failed: {e}")
+    else:
+        print("MQTT_URL not set, running without MQTT")

@@ -1,0 +1,101 @@
+import React, { useState, useEffect } from 'react';
+import { PowerChart } from './components/PowerChart';
+import { PriceChart } from './components/PriceChart';
+import { dashboardAPI } from './services/dashboard';
+import './index.css';
+
+function App() {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await dashboardAPI.getData();
+        setDashboardData(data);
+        setLoading(false);
+      } catch (error) {
+        console.error('API Error:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) return <div className="loading">Loading...</div>;
+  if (!dashboardData) return <div>Error loading data</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">SES Control Dashboard</h1>
+          <div className="flex space-x-4">
+            <span className="px-3 py-1 rounded-full text-sm bg-green-600">API OK</span>
+            <span className="px-3 py-1 rounded-full text-sm bg-green-600">RPC OK</span>
+          </div>
+        </div>
+
+        {/* Device Cards s aktualizovanými názvy */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              {dashboardData.devices.pata_domu.name}
+            </h3>
+            <div className="text-3xl font-bold text-blue-400">
+              {dashboardData.devices.pata_domu.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.devices.pata_domu.status.toUpperCase()}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Hlavní měření domu
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              {dashboardData.devices.fve_mereni.name}
+            </h3>
+            <div className="text-3xl font-bold text-green-400">
+              {dashboardData.devices.fve_mereni.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.devices.fve_mereni.status.toUpperCase()}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Měření fotovoltaiky
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">Grid Power</h3>
+            <div className="text-3xl font-bold text-purple-400">
+              {dashboardData.devices.grid_power.power.toFixed(1)} W
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              {dashboardData.power.grid < 0 ? 'DODÁVKA' : 'ODBĚR'}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Vypočteno z paty domu
+            </div>
+          </div>
+        </div>
+
+        {/* Grafy */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <PowerChart />
+          <PriceChart 
+            data={dashboardData.prices.hourly || []} 
+            currentPrice={dashboardData.prices.current || 85.73} 
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
