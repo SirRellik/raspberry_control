@@ -60,7 +60,7 @@ echo ""
 # ========================================
 if [[ -n "$CSS_FILE" ]]; then
     echo "🎨 Upgraduji CSS..."
-    cat >> "$CSS_FILE" << 'EOF'
+    cat >> "$CSS_FILE" << 'CSSEOF'
 
 /* === RASPBERRY CONTROL V2.0 UPGRADE === */
 /* Energetické boxy vedle sebe */
@@ -131,12 +131,12 @@ if [[ -n "$CSS_FILE" ]]; then
     }
 }
 /* === KONEC V2.0 UPGRADE === */
-EOF
+CSSEOF
     echo "✅ CSS upgrade dokončen"
 else
-    echo "⚠️  CSS soubor nenalezen - vytváříme nový"
+    echo "⚠️  CSS soubor nenalezen - vytvářím nový"
     CSS_FILE="$PROJECT_DIR/dashboard-v2.css"
-    cat > "$CSS_FILE" << 'EOF'
+    cat > "$CSS_FILE" << 'NEWCSS'
 /* Raspberry Control v2.0 CSS */
 .energy-section {
     display: grid;
@@ -202,7 +202,7 @@ else
         grid-template-columns: 1fr;
     }
 }
-EOF
+NEWCSS
     echo "✅ Nový CSS soubor vytvořen: $CSS_FILE"
 fi
 
@@ -222,7 +222,7 @@ if [[ -n "$JS_FILE" ]]; then
     sed -i 's/setTimeout([^,]*,[ ]*1000)/setTimeout(\1, 5000)/g' "$JS_FILE"
     
     # Přidání vylepšené funkce pro spotové ceny
-    cat >> "$JS_FILE" << 'EOF'
+    cat >> "$JS_FILE" << 'JSEOF'
 
 // === RASPBERRY CONTROL V2.0 UPGRADE ===
 // Vylepšená funkce pro načítání spotových cen
@@ -262,12 +262,12 @@ if (typeof updateSpotPrices !== 'undefined') {
 
 console.log('✅ Dashboard upgrade v2.0 načten - interval: 5 sekund');
 // === KONEC V2.0 UPGRADE ===
-EOF
+JSEOF
     echo "✅ JavaScript upgrade dokončen"
 else
-    echo "⚠️  JavaScript soubor nenalezen - vytváříme nový"
+    echo "⚠️  JavaScript soubor nenalezen - vytvářím nový"
     JS_FILE="$PROJECT_DIR/dashboard-v2.js"
-    cat > "$JS_FILE" << 'EOF'
+    cat > "$JS_FILE" << 'NEWJS'
 // Raspberry Control Dashboard v2.0
 const UPDATE_INTERVAL = 5000; // 5 sekund
 
@@ -311,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(updateData, UPDATE_INTERVAL);
     console.log('✅ Dashboard v2.0 spuštěn s intervalem 5 sekund');
 });
-EOF
+NEWJS
     echo "✅ Nový JavaScript soubor vytvořen: $JS_FILE"
 fi
 
@@ -332,7 +332,7 @@ echo ""
 echo "🔧 KROK 2: Rozdělte spotové ceny do boxů"
 echo "   Nahraďte současnou sekci spotových cen touto strukturou:"
 echo ""
-cat << 'EOF'
+cat << 'HTMLEOF'
 <section class="prices-section">
     <h2>Spot ceny elektřiny - dnes</h2>
     <div class="prices-grid">
@@ -358,7 +358,7 @@ cat << 'EOF'
         </div>
     </div>
 </section>
-EOF
+HTMLEOF
 echo ""
 echo "🔧 KROK 3: Připojte nové CSS (pokud bylo vytvořeno)"
 if [[ "$CSS_FILE" == *"dashboard-v2.css" ]]; then
