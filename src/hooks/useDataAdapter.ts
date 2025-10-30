@@ -20,8 +20,9 @@ export const useDataAdapter = () => {
 
   const connect = useCallback(() => {
     // Vyber adaptér podle env proměnné
-    const useMqtt = import.meta.env.VITE_USE_MQTT === 'true';
-    
+    // Defaultně používáme MQTT adapter pro Raspberry Pi (pokud není explicitně vypnutý)
+    const useMqtt = import.meta.env.VITE_USE_MQTT !== 'false';
+
     let newAdapter: DataAdapter;
     if (useMqtt) {
       console.log('Using MQTT WebSocket adapter');
