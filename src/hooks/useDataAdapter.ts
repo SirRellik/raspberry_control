@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DataAdapter, LogEntry, DataMessage } from '../adapters/DataAdapter';
 import { WebSocketAdapter } from '../adapters/WebSocketAdapter';
 import { MqttWsAdapter } from '../adapters/MqttWsAdapter';
@@ -8,20 +8,12 @@ export const useDataAdapter = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [data, setData] = useState<any>({});
+  const adapterRef = useRef<DataAdapter | null>(null);
 
-  const handleMessage = useCallback((message: DataMessage) => {
-    // Aktualizuj stav z adaptéru
-    if (adapter) {
-      setIsConnected(adapter.isConnected);
-      setLogs([...adapter.logs]);
-      setData({ ...adapter.data });
-    }
-  }, [adapter]);
-
-  const connect = useCallback(() => {
+  useEffect(() => {
     // Vyber adaptér podle env proměnné
     const useMqtt = import.meta.env.VITE_USE_MQTT === 'true';
-    
+
     let newAdapter: DataAdapter;
     if (useMqtt) {
       console.log('Using MQTT WebSocket adapter');
@@ -30,27 +22,40 @@ export const useDataAdapter = () => {
       console.log('Using Backend WebSocket adapter');
       newAdapter = new WebSocketAdapter();
     }
-    
+
+    adapterRef.current = newAdapter;
     setAdapter(newAdapter);
+
+    // Callback pro zpracování zpráv
+    const handleMessage = (message: DataMessage) => {
+      // Aktualizuj stav z adaptéru (pouze pokud je stále aktivní)
+      if (adapterRef.current) {
+        setIsConnected(adapterRef.current.isConnected);
+        setLogs([...adapterRef.current.logs]);
+        setData({ ...adapterRef.current.data });
+      }
+    };
+
     newAdapter.connect(handleMessage);
-    
+
     // Polling pro aktualizaci stavu
     const interval = setInterval(() => {
-      setIsConnected(newAdapter.isConnected);
-      setLogs([...newAdapter.logs]);
-      setData({ ...newAdapter.data });
+      if (adapterRef.current) {
+        setIsConnected(adapterRef.current.isConnected);
+        setLogs([...adapterRef.current.logs]);
+        setData({ ...adapterRef.current.data });
+      }
     }, 1000);
-    
+
+    // Cleanup
     return () => {
       clearInterval(interval);
-      newAdapter.disconnect();
+      if (adapterRef.current) {
+        adapterRef.current.disconnect();
+      }
+      adapterRef.current = null;
     };
-  }, [handleMessage]);
-
-  useEffect(() => {
-    const cleanup = connect();
-    return cleanup;
-  }, [connect]);
+  }, []); // Prázdné dependencies - připojíme se pouze jednou
 
   return { adapter, isConnected, logs, data };
 };
