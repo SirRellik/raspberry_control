@@ -1,0 +1,14 @@
+[Unit]
+Description=Raspberry Control Auto-updater Timer
+Requires=raspberry-control-updater.service
+
+[Timer]
+# Spustit 5 minut po startu systému
+OnBootSec=5min
+# Opakovat každých 30 minut
+OnUnitActiveSec=30min
+# Pokud systém nebyl zapnutý v čase spuštění, spustit při příštím startu
+Persistent=true
+
+[Install]
+WantedBy=timers.target

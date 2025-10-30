@@ -1,0 +1,21 @@
+[Unit]
+Description=Mosquitto MQTT Broker pro Raspberry Control
+After=network.target
+Documentation=man:mosquitto.conf(5) man:mosquitto(8)
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf
+Restart=on-failure
+RestartSec=5s
+
+# Bezpečnostní nastavení
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/mosquitto /var/lib/mosquitto
+
+[Install]
+WantedBy=multi-user.target

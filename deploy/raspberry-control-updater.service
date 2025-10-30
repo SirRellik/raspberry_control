@@ -1,0 +1,12 @@
+[Unit]
+Description=Raspberry Control Auto-updater
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/raspberry_control/deploy/update-and-deploy.sh
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=raspberry-control-updater
